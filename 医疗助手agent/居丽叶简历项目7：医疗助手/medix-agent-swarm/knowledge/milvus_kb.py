@@ -9,6 +9,7 @@
 参考实现：/Users/saintgeo/Desktop/self-learn/shanglv
 """
 import json
+import os
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from loguru import logger
@@ -53,19 +54,12 @@ class MedicalKnowledgeBase:
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
         # 初始化 Embedding 模型（支持本地路径）
-        # 优先检查本地缓存路径
-        local_model_path = Path.home() / ".cache" / "huggingface" / "hub" / "models--BAAI--bge-small-zh-v1.5" / "snapshots"
+        snapshots = self._find_cached_model_snapshots(embedding_model)
 
-        if local_model_path.exists():
-            # 找到最新的 snapshot
-            snapshots = sorted(local_model_path.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
-            if snapshots:
-                model_path = str(snapshots[0])
-                logger.info(f"Loading embedding model from local cache: {model_path}")
-                self.embedding_model = SentenceTransformer(model_path, device='cpu')
-            else:
-                logger.info(f"Loading embedding model: {embedding_model}")
-                self.embedding_model = SentenceTransformer(embedding_model, device='cpu')
+        if snapshots:
+            model_path = str(snapshots[0])
+            logger.info(f"Loading embedding model from local cache: {model_path}")
+            self.embedding_model = SentenceTransformer(model_path, device='cpu')
         else:
             logger.info(f"Loading embedding model: {embedding_model}")
             self.embedding_model = SentenceTransformer(embedding_model, device='cpu')
@@ -90,6 +84,39 @@ class MedicalKnowledgeBase:
             logger.info(f"Collection already exists: {collection_name}")
 
         self._initialized = True
+
+    def _find_cached_model_snapshots(self, embedding_model: str) -> List[Path]:
+        """在常见 Hugging Face 缓存目录中查找本地模型快照。"""
+        model_cache_dirname = f"models--{embedding_model.replace('/', '--')}"
+        cache_roots: List[Path] = []
+
+        hub_cache = os.getenv("HUGGINGFACE_HUB_CACHE")
+        if hub_cache:
+            cache_roots.append(Path(hub_cache).expanduser())
+
+        hf_home = os.getenv("HF_HOME")
+        if hf_home:
+            cache_roots.append(Path(hf_home).expanduser() / "hub")
+
+        cache_roots.append(Path.home() / ".cache" / "huggingface" / "hub")
+
+        snapshots: List[Path] = []
+        seen = set()
+        for root in cache_roots:
+            root_key = str(root)
+            if root_key in seen:
+                continue
+            seen.add(root_key)
+
+            snapshot_dir = root / model_cache_dirname / "snapshots"
+            if not snapshot_dir.exists():
+                continue
+
+            snapshots.extend(
+                sorted(snapshot_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+            )
+
+        return snapshots
 
     def _chunk_text(self, text: str, chunk_size: int = 1024, overlap: int = 100) -> List[str]:
         """

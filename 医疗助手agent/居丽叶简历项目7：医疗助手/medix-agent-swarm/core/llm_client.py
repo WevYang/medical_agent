@@ -3,7 +3,6 @@ LLM客户端
 支持调用 OpenAI 兼容的 API（如字节跳动豆包、OpenAI、Deepseek 等）
 支持 function calling
 """
-import sys
 import asyncio
 import json
 from typing import List, Dict, Any, Optional
@@ -11,8 +10,7 @@ from dataclasses import dataclass
 from openai import AsyncOpenAI
 from loguru import logger
 
-sys.path.insert(0, '/Users/saintgeo/Desktop/self-learn/swarm')
-from config import LLM_CONFIG
+from config_loader import load_llm_config, project_config_path
 
 
 @dataclass
@@ -49,16 +47,28 @@ class LLMClient:
 
         if model_type == "openai_compatible":
             # 使用 OpenAI 兼容的 API（通过 config.py 配置）
-            self.config = LLM_CONFIG
+            self.config = load_llm_config()
             self.client = AsyncOpenAI(
-                api_key=self.config["api_key"],
+                api_key=self.config.get("api_key", ""),
                 base_url=self.config["base_url"]
             )
             self.model_name = self.config["model_name"]
             self.temperature = self.config.get("temperature", 0.7)
             self.max_tokens = self.config.get("max_tokens", 8192)
+
+            if not self.config.get("api_key"):
+                logger.warning(
+                    f"LLM API key is empty. Set LLM_API_KEY or update {project_config_path()}"
+                )
         else:
             raise ValueError(f"Unknown model type: {model_type}")
+
+    def _ensure_configured(self):
+        """在发起请求前校验关键配置。"""
+        if not self.config.get("api_key"):
+            raise ValueError(
+                f"LLM API key is not configured. Set LLM_API_KEY or update {project_config_path()}"
+            )
 
     async def chat(
         self,
@@ -79,6 +89,7 @@ class LLMClient:
             模型返回的文本
         """
         try:
+            self._ensure_configured()
             temperature = temperature or self.temperature
             max_tokens = max_tokens or self.max_tokens
 
@@ -161,6 +172,7 @@ class LLMClient:
             LLMResponse 对象
         """
         try:
+            self._ensure_configured()
             temperature = temperature or self.temperature
             max_tokens = max_tokens or self.max_tokens
 

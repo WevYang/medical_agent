@@ -15,7 +15,6 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from loguru import logger
 import os
-import sys
 
 # Harness Engineering: 熵管理
 try:
@@ -25,12 +24,9 @@ except ImportError:
     logger.warning("EntropyManager not found, running without entropy management")
     ENTROPY_ENABLED = False
 
-# 加载上层目录的config.py
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-try:
-    from config import MEM0_CONFIG
-except ImportError:
-    MEM0_CONFIG = None
+from config_loader import load_mem0_config, project_config_path
+
+MEM0_CONFIG = load_mem0_config()
 
 try:
     from mem0 import MemoryClient
@@ -87,7 +83,9 @@ class LongTermMemory:
                 mem0_api_key = os.getenv("MEM0_API_KEY")
 
             if not mem0_api_key:
-                raise ValueError("MEM0_API_KEY not found. Set it in /Users/saintgeo/Desktop/self-learn/swarm/config.py")
+                raise ValueError(
+                    f"MEM0 API key not found. Set MEM0_API_KEY or update {project_config_path()}"
+                )
 
             # 初始化 Mem0 云服务客户端
             self.mem0 = MemoryClient(api_key=mem0_api_key)
@@ -96,7 +94,7 @@ class LongTermMemory:
         except Exception as e:
             logger.warning(f"Failed to initialize Mem0: {e}")
             logger.warning("Long-term memory disabled. System will work without Mem0.")
-            logger.info("To enable Mem0: set MEM0_API_KEY in /Users/saintgeo/Desktop/self-learn/swarm/config.py")
+            logger.info(f"To enable Mem0: set MEM0_API_KEY or update {project_config_path()}")
             self.enabled = False
 
     def add_session_summary(
@@ -214,6 +212,5 @@ class LongTermMemory:
         except Exception as e:
             logger.error(f"Failed to search similar sessions: {e}")
             return []
-
 
 
